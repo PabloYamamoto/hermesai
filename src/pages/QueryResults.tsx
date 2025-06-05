@@ -70,6 +70,17 @@ const QueryResults: React.FC = () => {
                 };
 
                 setResult(mockResult);
+
+                // Guardar en historial (localStorage)
+                try {
+                    const stored = localStorage.getItem('ragQueryHistory');
+                    const history: QueryResult[] = stored ? JSON.parse(stored) : [];
+                    history.unshift(mockResult);
+                    // Limitar a los últimos 50 registros
+                    localStorage.setItem('ragQueryHistory', JSON.stringify(history.slice(0, 50)));
+                } catch (e) {
+                    console.warn('No se pudo guardar el historial de consultas:', e);
+                }
             } catch (error) {
                 console.error('Error al cargar resultados:', error);
                 addToast({

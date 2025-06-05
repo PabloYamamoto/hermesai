@@ -20,6 +20,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed }) => {
         { path: '/', label: 'Dashboard', icon: 'lucide:layout-dashboard' },
         { path: '/documents', label: 'Documentos', icon: 'lucide:file-text' },
         { path: '/query', label: 'Consulta', icon: 'lucide:search' },
+        { path: '/query/history', label: 'Historial', icon: 'lucide:history' },
         { path: '/settings', label: 'Ajustes', icon: 'lucide:settings' },
     ];
 
