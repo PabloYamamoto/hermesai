@@ -49,20 +49,36 @@ class VectorStoreViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], serializer_class=VectorStoreSearchSerializer)
     def search(self, request, pk=None):
         """Search in a vector store"""
+        print(f"Search request for vector store: {pk}")
+        print(f"Search request data: {request.data}")
+        
         vector_store = self.get_object()
+        print(f"Vector store found: {vector_store.name} (ID: {vector_store.id})")
+        
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            print(f"Search serializer errors: {serializer.errors}")
+            return Response(
+                {'error': 'Validation failed', 'details': serializer.errors}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         try:
             openai_service = OpenAIVectorStoreService()
+            print(f"Searching with query: '{serializer.validated_data['query']}'")
+            
             results = openai_service.search_vector_store(
-                vector_store=vector_store,
+                vector_store_id=vector_store.openai_vector_store_id,
                 query=serializer.validated_data['query'],
                 max_results=serializer.validated_data.get('max_results', 10)
             )
             
+            print(f"Search completed successfully")
             return Response(results, status=status.HTTP_200_OK)
         except Exception as e:
+            print(f"Search error: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             return Response(
                 {'error': str(e)}, 
                 status=status.HTTP_400_BAD_REQUEST
@@ -96,12 +112,22 @@ class DocumentViewSet(viewsets.ModelViewSet):
 
     def create(self, request):
         """Upload and process a document"""
+        print(f"Document upload request data: {request.data}")
+        print(f"Files in request: {request.FILES}")
+        
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        
+        if not serializer.is_valid():
+            print(f"Serializer errors: {serializer.errors}")
+            return Response(
+                {'error': 'Validation failed', 'details': serializer.errors}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         try:
             # Create document instance
             document = serializer.save()
+            print(f"Document created: {document.id}")
             
             # Process with OpenAI
             openai_service = OpenAIVectorStoreService()
@@ -113,6 +139,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
             response_serializer = DocumentSerializer(processed_document)
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
         except Exception as e:
+            print(f"Error processing document: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             return Response(
                 {'error': str(e)}, 
                 status=status.HTTP_400_BAD_REQUEST

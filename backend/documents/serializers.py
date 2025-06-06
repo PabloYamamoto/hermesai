@@ -37,7 +37,11 @@ class DocumentUploadSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         vector_store_id = validated_data.pop('vector_store_id')
-        vector_store = VectorStore.objects.get(id=vector_store_id)
+        
+        try:
+            vector_store = VectorStore.objects.get(id=vector_store_id)
+        except VectorStore.DoesNotExist:
+            raise serializers.ValidationError(f"Vector store with id {vector_store_id} does not exist")
         
         # Extract file metadata
         file = validated_data['file']

@@ -24,6 +24,12 @@ class AlternativeOpenAIService:
             "Content-Type": "application/json",
             "OpenAI-Beta": "assistants=v2"
         }
+        
+        # Special headers for vector store operations
+        self.vector_store_headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
     
     def create_vector_store(self, name: str, metadata: Optional[Dict] = None) -> VectorStore:
         """Create a new vector store via HTTP request"""
@@ -96,19 +102,42 @@ class AlternativeOpenAIService:
     def search_vector_store(self, vector_store_id: str, query: str, max_results: int = 10) -> Dict[str, Any]:
         """Search in a vector store via HTTP request"""
         try:
+            # Check if vector store exists and has documents
+            vector_store = VectorStore.objects.get(openai_vector_store_id=vector_store_id)
+            completed_docs = vector_store.documents.filter(status='completed').count()
+            print(f"Vector store has {completed_docs} completed documents")
+            
+            if completed_docs == 0:
+                print("Warning: No completed documents in vector store")
+            
             url = f"{self.base_url}/vector_stores/{vector_store_id}/search"
             data = {
                 "query": query,
                 "max_num_results": max_results
             }
             
-            response = requests.post(url, headers=self.headers, json=data, timeout=30)
+            print(f"Making search request to: {url}")
+            print(f"Request data: {data}")
+            print(f"Request headers: {self.vector_store_headers}")
+            
+            response = requests.post(url, headers=self.vector_store_headers, json=data, timeout=30)
+            
+            print(f"Response status: {response.status_code}")
+            print(f"Response headers: {response.headers}")
+            print(f"Response text: {response.text}")
+            
+            if response.status_code != 200:
+                try:
+                    error_detail = response.json()
+                    print(f"API Error details: {error_detail}")
+                except:
+                    pass
+                
             response.raise_for_status()
             
             search_results = response.json()
             
             # Save query to database
-            vector_store = VectorStore.objects.get(openai_vector_store_id=vector_store_id)
             query_obj = Query.objects.create(
                 vector_store=vector_store,
                 query_text=query,
@@ -121,10 +150,16 @@ class AlternativeOpenAIService:
                 'results': search_results
             }
             
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"Failed to search vector store: {str(e)}")
         except VectorStore.DoesNotExist:
             raise Exception("Vector store not found in database")
+        except requests.exceptions.RequestException as e:
+            print(f"Request exception: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"Response content: {e.response.text}")
+            raise Exception(f"Failed to search vector store: {str(e)}")
+        except Exception as e:
+            print(f"Unexpected error in search: {e}")
+            raise
     
     def get_vector_store_status(self, vector_store: VectorStore) -> Dict[str, Any]:
         """Get the current status of a vector store from OpenAI"""
