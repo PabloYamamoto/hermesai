@@ -6,20 +6,95 @@ import {
     Input,
     Button,
     Spinner,
+    Select,
+    SelectItem,
     addToast
 } from '@heroui/react';
 import { Icon } from '@iconify/react';
-import { uploadDocument } from '../services/api';
+import { uploadDocument, getProjects, createProject } from '../services/api';
+import { Project } from '../types';
 
 const UploadDocument: React.FC = () => {
     const navigate = useNavigate();
     const [file, setFile] = React.useState<File | null>(null);
+    const [title, setTitle] = React.useState<string>('');
+    const [selectedProject, setSelectedProject] = React.useState<string>('');
+    const [newProjectName, setNewProjectName] = React.useState<string>('');
+    const [showNewProject, setShowNewProject] = React.useState<boolean>(false);
+    const [projects, setProjects] = React.useState<Project[]>([]);
     const [isUploading, setIsUploading] = React.useState<boolean>(false);
+    const [isLoadingProjects, setIsLoadingProjects] = React.useState<boolean>(true);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    // Load projects on component mount
+    React.useEffect(() => {
+        loadProjects();
+    }, []);
+
+    const loadProjects = async () => {
+        try {
+            setIsLoadingProjects(true);
+            const projectsList = await getProjects();
+            setProjects(projectsList);
+            
+            // Auto-select first project if available
+            if (projectsList.length > 0) {
+                setSelectedProject(projectsList[0].id);
+            }
+        } catch (error) {
+            console.error('Error loading projects:', error);
+            addToast({
+                title: 'Error',
+                description: 'No se pudieron cargar los proyectos',
+                color: 'danger'
+            });
+        } finally {
+            setIsLoadingProjects(false);
+        }
+    };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
-            setFile(e.target.files[0]);
+            const selectedFile = e.target.files[0];
+            setFile(selectedFile);
+            
+            // Auto-generate title from filename if not set
+            if (!title) {
+                const nameWithoutExtension = selectedFile.name.replace(/\.[^/.]+$/, '');
+                setTitle(nameWithoutExtension);
+            }
+        }
+    };
+
+    const handleCreateProject = async () => {
+        if (!newProjectName.trim()) {
+            addToast({
+                title: 'Error',
+                description: 'Por favor ingresa un nombre para el proyecto',
+                color: 'danger'
+            });
+            return;
+        }
+
+        try {
+            const newProject = await createProject(newProjectName.trim());
+            setProjects(prev => [...prev, newProject]);
+            setSelectedProject(newProject.id);
+            setNewProjectName('');
+            setShowNewProject(false);
+            
+            addToast({
+                title: 'Proyecto creado',
+                description: 'El proyecto se ha creado correctamente',
+                color: 'success'
+            });
+        } catch (error) {
+            console.error('Error creating project:', error);
+            addToast({
+                title: 'Error',
+                description: 'No se pudo crear el proyecto',
+                color: 'danger'
+            });
         }
     };
 
@@ -33,23 +108,47 @@ const UploadDocument: React.FC = () => {
             return;
         }
 
-        // Validar tipo de archivo
-        const validTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-        if (!validTypes.includes(file.type)) {
+        if (!title.trim()) {
             addToast({
-                title: 'Formato no válido',
-                description: 'Solo se permiten archivos PDF o DOCX',
+                title: 'Error',
+                description: 'Por favor ingresa un título para el documento',
                 color: 'danger'
             });
             return;
         }
 
-        // Validar tamaño (máximo 10MB)
-        const maxSize = 10 * 1024 * 1024; // 10MB en bytes
+        if (!selectedProject) {
+            addToast({
+                title: 'Error',
+                description: 'Por favor selecciona un proyecto',
+                color: 'danger'
+            });
+            return;
+        }
+
+        // Validar tipo de archivo - expandir tipos válidos
+        const validTypes = [
+            'application/pdf', 
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/msword',
+            'text/plain',
+            'text/markdown'
+        ];
+        if (!validTypes.includes(file.type)) {
+            addToast({
+                title: 'Formato no válido',
+                description: 'Solo se permiten archivos PDF, DOCX, DOC, TXT o MD',
+                color: 'danger'
+            });
+            return;
+        }
+
+        // Validar tamaño (máximo 25MB)
+        const maxSize = 25 * 1024 * 1024; // 25MB en bytes
         if (file.size > maxSize) {
             addToast({
                 title: 'Archivo demasiado grande',
-                description: 'El tamaño máximo permitido es 10MB',
+                description: 'El tamaño máximo permitido es 25MB',
                 color: 'danger'
             });
             return;
@@ -60,12 +159,14 @@ const UploadDocument: React.FC = () => {
 
             const formData = new FormData();
             formData.append('file', file);
+            formData.append('title', title.trim());
+            formData.append('vector_store_id', selectedProject);
 
             const response = await uploadDocument(formData);
 
             addToast({
                 title: 'Documento subido',
-                description: 'El documento se ha subido correctamente',
+                description: 'El documento se ha subido y está siendo procesado',
                 color: 'success'
             });
 
@@ -107,6 +208,75 @@ const UploadDocument: React.FC = () => {
 
             <Card>
                 <CardBody className="space-y-6">
+                    {/* Project Selection */}
+                    <div>
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-lg font-medium">Proyecto</h3>
+                            <Button
+                                size="sm"
+                                variant="flat"
+                                color="primary"
+                                onPress={() => setShowNewProject(true)}
+                                startContent={<Icon icon="lucide:plus" width={16} />}
+                            >
+                                Crear Nuevo
+                            </Button>
+                        </div>
+
+                        {showNewProject ? (
+                            <div className="flex gap-2 mb-4">
+                                <Input
+                                    placeholder="Nombre del proyecto"
+                                    value={newProjectName}
+                                    onChange={(e) => setNewProjectName(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && handleCreateProject()}
+                                />
+                                <Button
+                                    color="primary"
+                                    onPress={handleCreateProject}
+                                    isDisabled={!newProjectName.trim()}
+                                >
+                                    Crear
+                                </Button>
+                                <Button
+                                    variant="flat"
+                                    onPress={() => {
+                                        setShowNewProject(false);
+                                        setNewProjectName('');
+                                    }}
+                                >
+                                    Cancelar
+                                </Button>
+                            </div>
+                        ) : null}
+
+                        <Select
+                            placeholder="Selecciona un proyecto"
+                            selectedKeys={selectedProject ? [selectedProject] : []}
+                            onSelectionChange={(keys) => {
+                                const selected = Array.from(keys)[0] as string;
+                                setSelectedProject(selected);
+                            }}
+                            isLoading={isLoadingProjects}
+                        >
+                            {projects.map((project) => (
+                                <SelectItem key={project.id} value={project.id}>
+                                    {project.name} ({project.document_count} documentos)
+                                </SelectItem>
+                            ))}
+                        </Select>
+                    </div>
+
+                    {/* Document Title */}
+                    <div>
+                        <Input
+                            label="Título del documento"
+                            placeholder="Ingresa un título para el documento"
+                            value={title}
+                            onChange={(e) => setTitle(e.target.value)}
+                        />
+                    </div>
+
                     {/* Área de selección de archivo */}
                     <div
                         className="border-2 border-dashed border-default-300 rounded-lg p-8 text-center cursor-pointer hover:bg-default-100 transition-colors"
@@ -116,7 +286,7 @@ const UploadDocument: React.FC = () => {
                             type="file"
                             ref={fileInputRef}
                             onChange={handleFileChange}
-                            accept=".pdf,.docx"
+                            accept=".pdf,.docx,.doc,.txt,.md"
                             className="hidden"
                         />
 
@@ -140,7 +310,7 @@ const UploadDocument: React.FC = () => {
                                     Arrastra y suelta tu archivo aquí o haz clic para seleccionar
                                 </p>
                                 <p className="text-default-500 mt-2">
-                                    PDF o DOCX (máximo 10MB)
+                                    PDF, DOCX, DOC, TXT o MD (máximo 25MB)
                                 </p>
                             </div>
                         )}
@@ -153,9 +323,10 @@ const UploadDocument: React.FC = () => {
                             Información importante
                         </h3>
                         <ul className="list-disc list-inside space-y-1 text-default-600 text-sm">
-                            <li>Solo se permiten archivos en formato PDF o DOCX.</li>
-                            <li>El tamaño máximo permitido es de 10MB.</li>
-                            <li>El proceso de vectorización puede tardar unos minutos dependiendo del tamaño del documento.</li>
+                            <li>Se permiten archivos PDF, DOCX, DOC, TXT y MD.</li>
+                            <li>El tamaño máximo permitido es de 25MB.</li>
+                            <li>El archivo será procesado por OpenAI y añadido al proyecto seleccionado.</li>
+                            <li>El proceso puede tardar unos minutos dependiendo del tamaño del documento.</li>
                             <li>Una vez subido, podrás ver el estado de procesamiento en la lista de documentos.</li>
                         </ul>
                     </div>
@@ -171,7 +342,7 @@ const UploadDocument: React.FC = () => {
                         <Button
                             color="primary"
                             onPress={handleUpload}
-                            isDisabled={!file || isUploading}
+                            isDisabled={!file || !title.trim() || !selectedProject || isUploading}
                             startContent={isUploading ? <Spinner size="sm" /> : <Icon icon="lucide:upload" width={18} />}
                         >
                             {isUploading ? 'Subiendo...' : 'Subir Documento'}
