@@ -252,15 +252,18 @@ const UploadDocument: React.FC = () => {
 
                         <Select
                             placeholder="Selecciona un proyecto"
-                            selectedKeys={selectedProject ? [selectedProject] : []}
+                            selectedKeys={selectedProject ? new Set([selectedProject]) : new Set()}
                             onSelectionChange={(keys) => {
                                 const selected = Array.from(keys)[0] as string;
-                                setSelectedProject(selected);
+                                console.log('Selected project:', selected);
+                                setSelectedProject(selected || '');
                             }}
                             isLoading={isLoadingProjects}
+                            selectionMode="single"
+                            className="w-full"
                         >
                             {projects.map((project) => (
-                                <SelectItem key={project.id} value={project.id}>
+                                <SelectItem key={project.id} value={project.id} textValue={`${project.name} (${project.document_count} documentos)`}>
                                     {project.name} ({project.document_count} documentos)
                                 </SelectItem>
                             ))}
