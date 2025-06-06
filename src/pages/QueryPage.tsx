@@ -6,20 +6,53 @@ import {
     Textarea,
     Button,
     Spinner,
+    Select,
+    SelectItem,
     addToast
 } from '@heroui/react';
 import { Icon } from '@iconify/react';
-import { getQuestionEmbedding, searchVectorStore, getChatResponse } from '../services/api';
+import { searchInProject, getProjects } from '../services/api';
+import { Project } from '../types';
 
 const QueryPage: React.FC = () => {
     const navigate = useNavigate();
     const [question, setQuestion] = React.useState<string>('');
+    const [selectedProject, setSelectedProject] = React.useState<string>('');
+    const [projects, setProjects] = React.useState<Project[]>([]);
     const [isSubmitting, setIsSubmitting] = React.useState<boolean>(false);
+    const [isLoadingProjects, setIsLoadingProjects] = React.useState<boolean>(true);
     const [recentQueries, setRecentQueries] = React.useState<string[]>([
         '¿Cuáles son los principales hallazgos del informe Q3?',
         '¿Qué dice la política de vacaciones sobre días personales?',
         '¿Cuál es el proceso para solicitar un reembolso?'
     ]);
+
+    // Load projects on component mount
+    React.useEffect(() => {
+        loadProjects();
+    }, []);
+
+    const loadProjects = async () => {
+        try {
+            setIsLoadingProjects(true);
+            const projectsList = await getProjects();
+            setProjects(projectsList);
+            
+            // Auto-select first project if available
+            if (projectsList.length > 0) {
+                setSelectedProject(projectsList[0].id);
+            }
+        } catch (error) {
+            console.error('Error loading projects:', error);
+            addToast({
+                title: 'Error',
+                description: 'No se pudieron cargar los proyectos',
+                color: 'danger'
+            });
+        } finally {
+            setIsLoadingProjects(false);
+        }
+    };
 
     const handleSubmit = async () => {
         if (!question.trim()) {
@@ -31,25 +64,23 @@ const QueryPage: React.FC = () => {
             return;
         }
 
+        if (!selectedProject) {
+            addToast({
+                title: 'Error',
+                description: 'Por favor selecciona un proyecto',
+                color: 'danger'
+            });
+            return;
+        }
+
         try {
             setIsSubmitting(true);
 
-            // 1. Obtener embedding de la pregunta
-            const embeddingResponse = await getQuestionEmbedding(question);
-            const vector = embeddingResponse.embedding;
+            // Search in the selected project
+            const searchResponse = await searchInProject(selectedProject, question, 10);
 
-            // 2. Buscar fragmentos relevantes
-            const fragmentsResponse = await searchVectorStore(5, vector);
-            const fragments = fragmentsResponse.fragments;
-
-            // 3. Generar respuesta con Chat Completion
-            const chatResponse = await getChatResponse(question, fragments);
-
-            // 4. Guardar la consulta y redirigir a resultados
-            const queryId = chatResponse.id;
-
-            // Redirigir a la página de resultados
-            navigate(`/query/results?id=${queryId}&q=${encodeURIComponent(question)}`);
+            // Redirigir a la página de resultados con el queryId
+            navigate(`/query/results?queryId=${searchResponse.query_id}&q=${encodeURIComponent(question)}`);
 
         } catch (error) {
             console.error('Error al procesar consulta:', error);
@@ -73,6 +104,31 @@ const QueryPage: React.FC = () => {
 
             <Card>
                 <CardBody className="space-y-6">
+                    {/* Project Selection */}
+                    <div>
+                        <label className="block text-default-700 font-medium mb-2">
+                            Seleccionar Proyecto
+                        </label>
+                        <Select
+                            placeholder="Selecciona un proyecto para buscar"
+                            selectedKeys={selectedProject ? new Set([selectedProject]) : new Set()}
+                            onSelectionChange={(keys) => {
+                                const selected = Array.from(keys)[0] as string;
+                                console.log('Selected project:', selected);
+                                setSelectedProject(selected || '');
+                            }}
+                            isLoading={isLoadingProjects}
+                            selectionMode="single"
+                            className="w-full"
+                        >
+                            {projects.map((project) => (
+                                <SelectItem key={project.id} value={project.id} textValue={`${project.name} (${project.document_count} documentos)`}>
+                                    {project.name} ({project.document_count} documentos)
+                                </SelectItem>
+                            ))}
+                        </Select>
+                    </div>
+
                     <div>
                         <label className="block text-default-700 font-medium mb-2">
                             Escribe tu pregunta
@@ -92,10 +148,10 @@ const QueryPage: React.FC = () => {
                             color="primary"
                             size="lg"
                             onPress={handleSubmit}
-                            isDisabled={!question.trim() || isSubmitting}
+                            isDisabled={!question.trim() || !selectedProject || isSubmitting}
                             startContent={isSubmitting ? <Spinner size="sm" /> : <Icon icon="lucide:search" width={18} />}
                         >
-                            {isSubmitting ? 'Procesando...' : 'Enviar Consulta'}
+                            {isSubmitting ? 'Procesando...' : 'Buscar en Documentos'}
                         </Button>
                     </div>
                 </CardBody>
