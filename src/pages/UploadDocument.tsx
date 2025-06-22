@@ -24,6 +24,7 @@ const UploadDocument: React.FC = () => {
     const [projects, setProjects] = React.useState<Project[]>([]);
     const [isUploading, setIsUploading] = React.useState<boolean>(false);
     const [isLoadingProjects, setIsLoadingProjects] = React.useState<boolean>(true);
+    const [highlight, setHighlight] = React.useState(false);
     const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     // Load projects on component mount
@@ -56,13 +57,7 @@ const UploadDocument: React.FC = () => {
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
             const selectedFile = e.target.files[0];
-            setFile(selectedFile);
-            
-            // Auto-generate title from filename if not set
-            if (!title) {
-                const nameWithoutExtension = selectedFile.name.replace(/\.[^/.]+$/, '');
-                setTitle(nameWithoutExtension);
-            }
+            handleSelectedFile(selectedFile);
         }
     };
 
@@ -185,6 +180,35 @@ const UploadDocument: React.FC = () => {
         }
     };
 
+    const handleSelectedFile = (file: File) => {
+        setFile(file);
+            
+        // Auto-generate title from filename if not set
+        if (!title) {
+            const nameWithoutExtension = file.name.replace(/\.[^/.]+$/, '');
+            setTitle(nameWithoutExtension);
+        }
+    }
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        setHighlight(false);
+
+        const files = Array.from(e.dataTransfer.files);
+        
+        if (files.length > 0) {
+            const selectedFile = files[0];
+            handleSelectedFile(selectedFile);
+        }
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        setHighlight(true);
+    };
+
+    const handleDragLeave = () => setHighlight(false);
+
     const triggerFileInput = () => {
         if (fileInputRef.current) {
             fileInputRef.current.click();
@@ -282,8 +306,11 @@ const UploadDocument: React.FC = () => {
 
                     {/* Área de selección de archivo */}
                     <div
-                        className="border-2 border-dashed border-default-300 rounded-lg p-8 text-center cursor-pointer hover:bg-default-100 transition-colors"
+                        className={`border-2 border-dashed border-default-300 rounded-lg p-8 text-center cursor-pointer hover:bg-default-100 transition-colors ${highlight ? 'bg-default-200' : ''}`}
                         onClick={triggerFileInput}
+                        onDrop={handleDrop}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
                     >
                         <input
                             type="file"
